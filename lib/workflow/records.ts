@@ -391,3 +391,103 @@ export async function raiseDepartmentQuery(workflowId: string, question: string)
   }
   return { status: 201, queryId: result.data };
 }
+
+export type DecisionResult =
+  | {
+      ok: true;
+      workflowId: string;
+      approvalId: string;
+      decision: "granted" | "rejected";
+      alreadyDecided?: boolean;
+    }
+  | {
+      ok: false;
+      error: string;
+      status: 400 | 403 | 404 | 409 | 500;
+    };
+
+export async function recordDepartmentDecision(
+  workflowId: string,
+  decision: "granted" | "rejected",
+  remarks?: string,
+): Promise<DecisionResult> {
+  await requireAnyRole(["officer", "admin"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("record_department_decision", {
+    target_workflow: workflowId,
+    decision,
+    remarks: remarks ?? null,
+  });
+
+  if (error) {
+    const msg = error.message;
+    if (msg.includes("permission denied") || msg.includes("officer is not assigned")) {
+      return { ok: false, error: msg, status: 403 };
+    }
+    if (msg.includes("workflow not found")) {
+      return { ok: false, error: "Workflow not found.", status: 404 };
+    }
+    if (msg.includes("invalid decision status") || msg.includes("rejection remarks are required")) {
+      return { ok: false, error: msg, status: 400 };
+    }
+    if (msg.includes("cannot change a finalized approval decision")) {
+      return { ok: false, error: msg, status: 409 };
+    }
+    return { ok: false, error: "Decision could not be recorded.", status: 500 };
+  }
+
+  const payload = data as {
+    ok?: boolean;
+    workflowId?: string;
+    approvalId?: string;
+    decision?: string;
+    alreadyDecided?: boolean;
+  } | null;
+
+  if (!payload || !payload.ok) {
+    return { ok: false, error: "Invalid response from decision RPC.", status: 500 };
+  }
+
+  return {
+    ok: true,
+    workflowId: payload.workflowId ?? workflowId,
+    approvalId: payload.approvalId ?? "",
+    decision: (payload.decision as "granted" | "rejected") ?? decision,
+    alreadyDecided: payload.alreadyDecided,
+  };
+}
+
+export type CertificateResult =
+  | { ok: true; certificateId: string }
+  | { ok: false; error: string; status: 400 | 403 | 404 | 409 | 500 };
+
+export async function issueCertificateForApproval(
+  approvalId: string,
+): Promise<CertificateResult> {
+  await requireAnyRole(["officer", "admin"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("issue_approval_certificate", {
+    target_approval: approvalId,
+  });
+
+  if (error) {
+    const msg = error.message;
+    if (msg.includes("certificate was not issued")) {
+      return { ok: false, error: "Certificate was not issued. Unauthorized or missing department assignment.", status: 403 };
+    }
+    if (msg.includes("approval decision required")) {
+      return { ok: false, error: "Approval decision required before certificate issuance.", status: 409 };
+    }
+    if (msg.includes("certificate already issued")) {
+      return { ok: false, error: "Certificate has already been issued for this approval.", status: 409 };
+    }
+    return { ok: false, error: msg || "Certificate issuance failed.", status: 500 };
+  }
+
+  if (typeof data !== "string") {
+    return { ok: false, error: "Invalid certificate reference returned.", status: 500 };
+  }
+
+  return { ok: true, certificateId: data };
+}
+

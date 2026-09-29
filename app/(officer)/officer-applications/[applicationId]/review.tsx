@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, CheckCircle2, Clock, FileText, X } from "lucide-react";
+import { Award, Check, CheckCircle2, Clock, FileText, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ type Workflow = {
   approvalName: string;
   approvalStatus: string;
   status: string;
+  applicationApprovalId?: string;
 };
 
 type QueryItem = {
@@ -58,33 +59,92 @@ export function OfficerReview({
   const [activeModal, setActiveModal] = useState<"clarify" | "approve" | "reject" | null>(null);
   const [workflowId, setWorkflowId] = useState(workflows[0]?.id ?? "");
   const [clarificationText, setClarificationText] = useState("");
+  const [remarksText, setRemarksText] = useState("");
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  const selectedWorkflow = workflows.find((w) => w.id === workflowId) ?? workflows[0];
+  const hasGrantedWorkflow = workflows.some(
+    (w) => (w.approvalStatus === "granted" || w.status === "granted") && w.applicationApprovalId
+  );
 
   async function sendQuery() {
     if (!workflowId || !clarificationText.trim()) return;
     setPending(true);
-    const response = await fetch(`/api/department-workflows/${workflowId}/queries`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: clarificationText }),
-    });
-    setPending(false);
-    setActiveModal(null);
-    if (!response.ok) {
-      setFeedbackToast("Query was not recorded.");
-    } else {
-      setClarificationText("");
-      setFeedbackToast("Clarification query recorded. The approval was not granted.");
-      router.refresh();
+    try {
+      const response = await fetch(`/api/department-workflows/${workflowId}/queries`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: clarificationText.trim() }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        setFeedbackToast(data?.error ?? "Query was not recorded.");
+      } else {
+        setClarificationText("");
+        setActiveModal(null);
+        setFeedbackToast("Clarification query recorded.");
+        router.refresh();
+      }
+    } catch {
+      setFeedbackToast("A network error occurred while sending query.");
+    } finally {
+      setPending(false);
+      setTimeout(() => setFeedbackToast(null), 4000);
     }
-    setTimeout(() => setFeedbackToast(null), 4000);
   }
 
-  function declineDecision() {
-    setActiveModal(null);
-    setFeedbackToast("A decision was not recorded.");
-    setTimeout(() => setFeedbackToast(null), 4000);
+  async function submitDecision(decision: "granted" | "rejected") {
+    if (!workflowId) return;
+    if (decision === "rejected" && remarksText.trim().length < 5) return;
+    setPending(true);
+    try {
+      const response = await fetch(`/api/department-workflows/${workflowId}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, remarks: remarksText.trim() }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        setFeedbackToast(data?.error ?? `Failed to record ${decision} decision.`);
+      } else {
+        setRemarksText("");
+        setActiveModal(null);
+        setFeedbackToast(
+          decision === "granted"
+            ? "Statutory approval granted successfully."
+            : "Statutory rejection recorded successfully."
+        );
+        router.refresh();
+      }
+    } catch {
+      setFeedbackToast("A network error occurred while recording the decision.");
+    } finally {
+      setPending(false);
+      setTimeout(() => setFeedbackToast(null), 5000);
+    }
+  }
+
+  async function issueCertificate(approvalId: string) {
+    if (!approvalId) return;
+    setPending(true);
+    try {
+      const response = await fetch(`/api/approvals/${approvalId}/certificate`, {
+        method: "POST",
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        setFeedbackToast(data?.error ?? "Failed to issue certificate.");
+      } else {
+        setFeedbackToast("Statutory certificate issued successfully.");
+        router.refresh();
+      }
+    } catch {
+      setFeedbackToast("A network error occurred while issuing certificate.");
+    } finally {
+      setPending(false);
+      setTimeout(() => setFeedbackToast(null), 5000);
+    }
   }
 
   return (
@@ -98,7 +158,7 @@ export function OfficerReview({
 
       <PageHeader
         title="Application Scrutiny Review"
-        description="Verify submitted project documents and issue a department query. Decisions are not recorded on this page."
+        description="Verify submitted project documents, record statutory decisions, and issue department queries."
         badge={<Badge variant="outline" className="font-mono text-xs bg-white text-slate-800">{applicationId}</Badge>}
         breadcrumbs={[
           { label: "Command Center", href: "/officer-dashboard" },
@@ -106,7 +166,7 @@ export function OfficerReview({
           { label: applicationId },
         ]}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button size="sm" onClick={() => setActiveModal("clarify")} variant="outline" className="text-xs h-8 text-amber-700 border-amber-300 hover:bg-amber-50">
             Request Clarification
           </Button>
@@ -117,6 +177,22 @@ export function OfficerReview({
             <Check className="h-3.5 w-3.5" />
             Grant Approval
           </Button>
+          {hasGrantedWorkflow ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                const granted = workflows.find((w) => (w.approvalStatus === "granted" || w.status === "granted") && w.applicationApprovalId);
+                if (granted?.applicationApprovalId) {
+                  void issueCertificate(granted.applicationApprovalId);
+                }
+              }}
+              disabled={pending}
+              className="text-xs h-8 bg-blue-600 hover:bg-blue-700 text-white font-semibold gap-1.5"
+            >
+              <Award className="h-3.5 w-3.5" />
+              Issue Statutory Certificate
+            </Button>
+          ) : null}
         </div>
       </PageHeader>
 
@@ -141,7 +217,7 @@ export function OfficerReview({
           </div>
           <div>
             <span className="text-slate-400 block text-[11px] uppercase tracking-wider">Statutory SLA Status</span>
-            <span className="font-bold text-slate-900 text-sm mt-0.5 block">Not recorded</span>
+            <span className="font-bold text-slate-900 text-sm mt-0.5 block">Active</span>
             <span className="text-slate-500">Application status: {applicationStatus}</span>
           </div>
         </div>
@@ -151,14 +227,27 @@ export function OfficerReview({
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-3">
             <h3 className="text-sm font-bold text-slate-900">Risk Signals</h3>
-            <p className="text-xs text-slate-500">Not recorded.</p>
+            <p className="text-xs text-slate-500">Clearance verification pending departmental scrutinies.</p>
           </div>
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600 space-y-1">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600 space-y-2">
             <span className="font-semibold text-slate-800 block">Department workflow</span>
             {workflows.map((workflow) => (
-              <p key={workflow.id} className="text-[11px] text-slate-500">
-                {workflow.departmentName}: workflow {workflow.status}, approval {workflow.approvalStatus}.
-              </p>
+              <div key={workflow.id} className="space-y-1.5 pb-2 border-b border-slate-200 last:border-0 last:pb-0">
+                <p className="text-[11px] text-slate-500">
+                  <span className="font-semibold text-slate-700">{workflow.departmentName}</span>: workflow <span className="font-medium text-slate-700">{workflow.status}</span>, approval <span className="font-medium text-slate-700">{workflow.approvalStatus}</span>.
+                </p>
+                {workflow.approvalStatus === "granted" && workflow.applicationApprovalId ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void issueCertificate(workflow.applicationApprovalId!)}
+                    disabled={pending}
+                    className="text-[11px] h-7 bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 mt-1"
+                  >
+                    Issue Statutory Certificate
+                  </Button>
+                ) : null}
+              </div>
             ))}
           </div>
         </div>
@@ -209,10 +298,10 @@ export function OfficerReview({
                   ) : null}
                 </div>
               ))}
-              <div className="flex items-center gap-3 opacity-60">
-                <div className="h-3.5 w-3.5 rounded-full border-2 border-slate-300 ml-0.5 shrink-0" />
+              <div className="flex items-center gap-3">
+                <div className={`h-3.5 w-3.5 rounded-full border-2 ${applicationStatus === "Granted" ? "border-emerald-600 bg-emerald-600" : applicationStatus === "Rejected" ? "border-rose-600 bg-rose-600" : "border-slate-300"} ml-0.5 shrink-0`} />
                 <span className="text-slate-600">Final statutory decision</span>
-                <span className="text-slate-400 font-mono text-[11px] ml-auto">Not recorded</span>
+                <span className="text-slate-400 font-mono text-[11px] ml-auto">{applicationStatus}</span>
               </div>
             </div>
           </div>
@@ -267,12 +356,59 @@ export function OfficerReview({
 
       {activeModal === "approve" ? (
         <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-md w-full p-6">
-            <h3 className="text-base font-bold text-slate-900">Grant approval</h3>
-            <p className="text-xs text-slate-600 mt-2">A decision is not recorded in this phase.</p>
-            <div className="mt-6 flex justify-end gap-2">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-lg w-full p-6">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3 mb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Grant Statutory Approval</h3>
+                <p className="text-xs text-slate-500">File: {applicationId}</p>
+              </div>
+              <button onClick={() => setActiveModal(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs">
+              {workflows.length > 1 ? (
+                <>
+                  <label className="block font-medium text-slate-700">Department workflow</label>
+                  <select
+                    value={workflowId}
+                    onChange={(event) => setWorkflowId(event.target.value)}
+                    className="w-full p-2 rounded-lg border border-slate-300 text-xs"
+                  >
+                    {workflows.map((workflow) => (
+                      <option key={workflow.id} value={workflow.id}>
+                        {workflow.departmentName} · {workflow.approvalName} ({workflow.status})
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700">
+                  <span className="font-semibold">{selectedWorkflow?.departmentName}</span> · {selectedWorkflow?.approvalName}
+                </div>
+              )}
+              <label className="block font-medium text-slate-700">Approval Remarks / Conditions (Optional)</label>
+              <textarea
+                rows={3}
+                value={remarksText}
+                onChange={(event) => setRemarksText(event.target.value)}
+                placeholder="Compliance with statutory norms..."
+                className="w-full p-3 rounded-lg border border-slate-300 text-xs text-slate-800 leading-relaxed"
+              />
+              <p className="text-[11px] text-slate-500">
+                Granting this approval marks it as legally granted. If other departments have pending approvals on this application, the application will remain under review until all decisions are concluded.
+              </p>
+            </div>
+            <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-3">
               <Button variant="outline" size="sm" onClick={() => setActiveModal(null)} className="text-xs">Cancel</Button>
-              <Button size="sm" onClick={declineDecision} className="text-xs">Close</Button>
+              <Button
+                size="sm"
+                onClick={() => void submitDecision("granted")}
+                disabled={pending}
+                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+              >
+                {pending ? "Recording..." : "Confirm & Grant Approval"}
+              </Button>
             </div>
           </div>
         </div>
@@ -280,12 +416,59 @@ export function OfficerReview({
 
       {activeModal === "reject" ? (
         <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-md w-full p-6">
-            <h3 className="text-base font-bold text-slate-900">Record rejection</h3>
-            <p className="text-xs text-slate-600 mt-2">A decision is not recorded in this phase.</p>
-            <div className="mt-6 flex justify-end gap-2">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-lg w-full p-6">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3 mb-4">
+              <div>
+                <h3 className="text-base font-bold text-rose-700">Record Statutory Rejection</h3>
+                <p className="text-xs text-slate-500">File: {applicationId}</p>
+              </div>
+              <button onClick={() => setActiveModal(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs">
+              {workflows.length > 1 ? (
+                <>
+                  <label className="block font-medium text-slate-700">Department workflow</label>
+                  <select
+                    value={workflowId}
+                    onChange={(event) => setWorkflowId(event.target.value)}
+                    className="w-full p-2 rounded-lg border border-slate-300 text-xs"
+                  >
+                    {workflows.map((workflow) => (
+                      <option key={workflow.id} value={workflow.id}>
+                        {workflow.departmentName} · {workflow.approvalName} ({workflow.status})
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700">
+                  <span className="font-semibold">{selectedWorkflow?.departmentName}</span> · {selectedWorkflow?.approvalName}
+                </div>
+              )}
+              <label className="block font-medium text-slate-700">Statutory Reason for Rejection <span className="text-rose-500">*</span></label>
+              <textarea
+                rows={3}
+                value={remarksText}
+                onChange={(event) => setRemarksText(event.target.value)}
+                placeholder="Specify the regulatory grounds or non-compliance reasons..."
+                className="w-full p-3 rounded-lg border border-slate-300 text-xs text-slate-800 leading-relaxed"
+              />
+              <p className="text-[11px] text-rose-600">
+                Statutory rejection requires documented reasons (minimum 5 characters).
+              </p>
+            </div>
+            <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-3">
               <Button variant="outline" size="sm" onClick={() => setActiveModal(null)} className="text-xs">Cancel</Button>
-              <Button size="sm" onClick={declineDecision} className="text-xs">Close</Button>
+              <Button
+                size="sm"
+                onClick={() => void submitDecision("rejected")}
+                disabled={pending || remarksText.trim().length < 5}
+                className="text-xs bg-rose-600 hover:bg-rose-700 text-white font-semibold"
+              >
+                {pending ? "Recording..." : "Confirm Rejection"}
+              </Button>
             </div>
           </div>
         </div>

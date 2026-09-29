@@ -5,7 +5,9 @@ import { AuthorizationError } from "@/lib/auth/session";
 
 export function authErrorResponse(error: unknown): NextResponse {
   if (error instanceof ZodError) {
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    const firstIssue = error.issues[0];
+    const message = firstIssue?.message || "Invalid request.";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
   if (error instanceof AuthorizationError) {
     return NextResponse.json({ error: error.message }, { status: error.status });

@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 
 import { registerOfficerRegistration } from "@/lib/auth/credentials";
 import { authErrorResponse } from "@/lib/auth/http";
+import {
+  autoActivateOfficerForDemo,
+  isLocalOfficerAutoActivationEnabled,
+} from "@/lib/auth/officer-auto-activation";
 import { signupSchema } from "@/lib/auth/schemas";
 import { parseWithSchema } from "@/lib/validations/parse";
 import { readPublicSupabaseConfig } from "@/lib/supabase/env";
@@ -21,15 +25,34 @@ export async function POST(request: Request) {
     const result = await registerOfficerRegistration(supabase, input);
 
     if (!result.ok) {
-      return NextResponse.json({ error: "Account could not be created." }, { status: 400 });
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[Signup] Officer registration failed (${result.code}): ${result.message}`);
+      }
+      return NextResponse.json(
+        { error: result.message ?? "Account could not be created." },
+        { status: result.code === "user_already_exists" ? 409 : 400 },
+      );
     }
 
-    return NextResponse.json({
+    const responsePayload = {
       userId: result.userId,
       role: "applicant",
       officerRegistration: "pending",
       needsEmailConfirmation: result.needsEmailConfirmation === true,
-    });
+      autoActivated: false,
+    };
+
+    // Local development/demo convenience only; production requires administrator authorization.
+    if (isLocalOfficerAutoActivationEnabled()) {
+      const activated = await autoActivateOfficerForDemo(result.userId, input.email);
+      if (activated) {
+        responsePayload.role = "officer";
+        responsePayload.officerRegistration = "active";
+        responsePayload.autoActivated = true;
+      }
+    }
+
+    return NextResponse.json(responsePayload);
   } catch (error) {
     return authErrorResponse(error);
   }

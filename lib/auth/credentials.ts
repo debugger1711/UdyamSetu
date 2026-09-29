@@ -1,4 +1,4 @@
-type AuthError = { message: string } | null;
+type AuthError = { message: string; code?: string } | null;
 
 export type PasswordAuthClient = {
   auth: {
@@ -14,7 +14,7 @@ export type PasswordAuthClient = {
       password: string;
       options?: { data?: { full_name?: string; officer_registration?: "true" } };
     }) => Promise<{
-      data: { user: { id: string } | null; session: unknown };
+      data: { user: { id: string; identities?: unknown[] } | null; session: unknown };
       error: AuthError;
     }>;
     signOut: () => Promise<{ error: AuthError }>;
@@ -23,7 +23,11 @@ export type PasswordAuthClient = {
 
 export type CredentialResult =
   | { ok: true; userId: string; needsEmailConfirmation?: boolean }
-  | { ok: false; code: "invalid_credentials" | "signup_failed" };
+  | {
+      ok: false;
+      code: "invalid_credentials" | "signup_failed" | "user_already_exists";
+      message?: string;
+    };
 
 export async function signInWithPassword(
   client: PasswordAuthClient,
@@ -56,7 +60,29 @@ export async function registerApplicant(
   });
 
   if (error || !data.user) {
-    return { ok: false, code: "signup_failed" };
+    const isDuplicate =
+      error?.code === "user_already_exists" ||
+      error?.message?.toLowerCase().includes("already registered");
+    if (isDuplicate) {
+      return {
+        ok: false,
+        code: "user_already_exists",
+        message: "An account with this email already exists. Please sign in.",
+      };
+    }
+    return {
+      ok: false,
+      code: "signup_failed",
+      message: error?.message || "Account could not be created.",
+    };
+  }
+
+  if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+    return {
+      ok: false,
+      code: "user_already_exists",
+      message: "An account with this email already exists. Please sign in.",
+    };
   }
 
   return {
@@ -87,7 +113,29 @@ export async function registerOfficerRegistration(
   });
 
   if (error || !data.user) {
-    return { ok: false, code: "signup_failed" };
+    const isDuplicate =
+      error?.code === "user_already_exists" ||
+      error?.message?.toLowerCase().includes("already registered");
+    if (isDuplicate) {
+      return {
+        ok: false,
+        code: "user_already_exists",
+        message: "An account with this email already exists. Please sign in.",
+      };
+    }
+    return {
+      ok: false,
+      code: "signup_failed",
+      message: error?.message || "Account could not be created.",
+    };
+  }
+
+  if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+    return {
+      ok: false,
+      code: "user_already_exists",
+      message: "An account with this email already exists. Please sign in.",
+    };
   }
 
   return {

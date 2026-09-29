@@ -61,6 +61,8 @@ export function applicationStatusLabel(status: string): string {
   if (status === "under_review") return "Under Review";
   if (status === "query_raised") return "Query Raised";
   if (status === "query_response_submitted") return "Query Response Submitted";
+  if (status === "granted") return "Granted";
+  if (status === "rejected") return "Rejected";
   return "Not recorded";
 }
 

@@ -14,14 +14,14 @@ const PROJECT_STAGES = [
 
 export const loginSchema = z
   .object({
-    email: z.email(),
-    password: z.string().min(1),
+    email: z.string().trim().email("Please enter a valid email address."),
+    password: z.string().min(1, "Password is required."),
   })
   .strict();
 
 export const signupSchema = z
   .object({
-    email: z.email(),
+    email: z.string().trim().email(),
     password: z.string().min(8),
     fullName: z.string().trim().min(1),
   })

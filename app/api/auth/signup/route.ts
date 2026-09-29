@@ -21,7 +21,13 @@ export async function POST(request: Request) {
     const result = await registerApplicant(supabase, input);
 
     if (!result.ok) {
-      return NextResponse.json({ error: "Account could not be created." }, { status: 400 });
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[Signup] Applicant registration failed (${result.code}): ${result.message}`);
+      }
+      return NextResponse.json(
+        { error: result.message ?? "Account could not be created." },
+        { status: result.code === "user_already_exists" ? 409 : 400 },
+      );
     }
 
     return NextResponse.json({

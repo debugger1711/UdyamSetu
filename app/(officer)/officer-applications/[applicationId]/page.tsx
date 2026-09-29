@@ -75,6 +75,7 @@ export default async function OfficerApplicationDetailsPage({
       applicationStatus={applicationStatusLabel(item.status)}
       workflows={item.workflows.map((workflow) => ({
         id: workflow.id,
+        applicationApprovalId: workflow.applicationApprovalId,
         departmentName: workflow.departmentName,
         approvalName: workflow.approvalName,
         approvalStatus: workflow.approvalStatus,

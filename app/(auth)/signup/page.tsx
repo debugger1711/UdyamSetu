@@ -45,7 +45,11 @@ export default function SignupPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, fullName }),
       });
-      const body = (await response.json()) as { error?: string; needsEmailConfirmation?: boolean };
+      const body = (await response.json()) as {
+        error?: string;
+        needsEmailConfirmation?: boolean;
+        autoActivated?: boolean;
+      };
 
       if (!response.ok) {
         setError(body.error ?? "Account could not be created.");
@@ -54,9 +58,11 @@ export default function SignupPage() {
 
       if (accountKind === "officer") {
         setNotice(
-          body.needsEmailConfirmation
-            ? "Confirm the email address. An administrator must authorize this officer registration before department work is available."
-            : "Registration is pending. An administrator must authorize it before department work is available. Sign in after that authorization.",
+          body.autoActivated
+            ? "Officer registration activated for local demo. You may now sign in."
+            : body.needsEmailConfirmation
+              ? "Confirm the email address. An administrator must authorize this officer registration before department work is available."
+              : "Registration is pending. An administrator must authorize it before department work is available. Sign in after that authorization.",
         );
         return;
       }
