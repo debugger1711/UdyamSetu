@@ -12,7 +12,7 @@ export type PasswordAuthClient = {
     signUp: (credentials: {
       email: string;
       password: string;
-      options?: { data?: { full_name?: string } };
+      options?: { data?: { full_name?: string; officer_registration?: "true" } };
     }) => Promise<{
       data: { user: { id: string } | null; session: unknown };
       error: AuthError;
@@ -51,6 +51,37 @@ export async function registerApplicant(
     options: {
       data: {
         full_name: input.fullName,
+      },
+    },
+  });
+
+  if (error || !data.user) {
+    return { ok: false, code: "signup_failed" };
+  }
+
+  return {
+    ok: true,
+    userId: data.user.id,
+    needsEmailConfirmation: data.session === null,
+  };
+}
+
+/**
+ * Creates an applicant and a pending officer registration.
+ * Auth metadata records the request only. It never assigns an officer account
+ * or a department. An administrator activates the request later.
+ */
+export async function registerOfficerRegistration(
+  client: PasswordAuthClient,
+  input: { email: string; password: string; fullName: string },
+): Promise<CredentialResult> {
+  const { data, error } = await client.auth.signUp({
+    email: input.email,
+    password: input.password,
+    options: {
+      data: {
+        full_name: input.fullName,
+        officer_registration: "true",
       },
     },
   });

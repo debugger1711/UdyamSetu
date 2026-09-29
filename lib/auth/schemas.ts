@@ -27,6 +27,14 @@ export const signupSchema = z
   })
   .strict();
 
+/** Administrator activation. The caller cannot name an account type here. */
+export const officerActivationSchema = z
+  .object({
+    email: z.email(),
+    departmentCode: z.string().trim().min(1).max(40),
+  })
+  .strict();
+
 export const createOwnedProjectSchema = z
   .object({
     name: z.string().trim().min(1),
