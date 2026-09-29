@@ -1,0 +1,2 @@
+-- Schema lives in supabase/migrations.
+-- Phase 0 inserts no business, applicant, officer, approval, or application rows.
