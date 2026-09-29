@@ -8,8 +8,11 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+type AccountKind = "" | "applicant" | "officer";
+
 export default function SignupPage() {
   const router = useRouter();
+  const [accountKind, setAccountKind] = useState<AccountKind>("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,16 +23,24 @@ export default function SignupPage() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!fullName.trim() || !email.trim() || !password) {
-      setError("Enterprise name, email, and password are required.");
+      setError(
+        accountKind === "officer"
+          ? "Officer name, email, and password are required."
+          : "Enterprise name, email, and password are required.",
+      );
       return;
     }
+
+    const path = accountKind === "officer"
+      ? "/api/auth/officer-registrations"
+      : "/api/auth/signup";
 
     setPending(true);
     setError("");
     setNotice("");
 
     try {
-      const response = await fetch("/api/auth/signup", {
+      const response = await fetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, fullName }),
@@ -38,6 +49,15 @@ export default function SignupPage() {
 
       if (!response.ok) {
         setError(body.error ?? "Account could not be created.");
+        return;
+      }
+
+      if (accountKind === "officer") {
+        setNotice(
+          body.needsEmailConfirmation
+            ? "Confirm the email address. An administrator must authorize this officer registration before department work is available."
+            : "Registration is pending. An administrator must authorize it before department work is available. Sign in after that authorization.",
+        );
         return;
       }
 
@@ -71,107 +91,170 @@ export default function SignupPage() {
             </div>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Register Industrial Entity
+            {accountKind === "" ? "Create an account" : accountKind === "officer" ? "Officer registration" : "Register Industrial Entity"}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Create an enterprise profile for single window clearance discovery
+            {accountKind === ""
+              ? "How do you want to use UdyamSetu?"
+              : accountKind === "officer"
+                ? "Submit registration details. Authorization is required before officer work."
+                : "Create an enterprise profile for single window clearance discovery"}
           </p>
         </div>
 
-        <Card className="border-border shadow-sm">
-          <CardHeader className="space-y-1 pb-4">
-            <CardTitle className="text-lg">Entity Onboarding</CardTitle>
-            <CardDescription className="text-xs">
-              Provide enterprise and promoter contact details
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-foreground" htmlFor="signup-name">
-                  Enterprise Name
-                </label>
-                <Input
-                  id="signup-name"
-                  type="text"
-                  placeholder="Enter the enterprise name"
-                  value={fullName}
-                  onChange={(event) => setFullName(event.target.value)}
-                  autoComplete="organization"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-foreground" htmlFor="signup-pan">
-                    PAN / GSTIN
-                  </label>
-                  <Input
-                    id="signup-pan"
-                    type="text"
-                    placeholder="AAACE1234F"
-                    autoComplete="off"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-foreground" htmlFor="signup-udyam">
-                    Udyam Registration (Optional)
-                  </label>
-                  <Input
-                    id="signup-udyam"
-                    type="text"
-                    placeholder="UDYAM-XX-00-0000000"
-                    autoComplete="off"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-foreground" htmlFor="signup-email">
-                  Official Email
-                </label>
-                <Input
-                  id="signup-email"
-                  type="email"
-                  placeholder="promoter@enterprise.com"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  autoComplete="email"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-foreground" htmlFor="signup-password">
-                  Password
-                </label>
-                <Input
-                  id="signup-password"
-                  type="password"
-                  placeholder="At least 8 characters"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  autoComplete="new-password"
-                />
-              </div>
-
-              {error ? <p className="text-xs text-destructive">{error}</p> : null}
-              {notice ? <p className="text-xs text-muted-foreground">{notice}</p> : null}
-
-              <div className="pt-2">
-                <Button className="w-full" type="submit" disabled={pending}>
-                  {pending ? "Creating account..." : "Create Account & Open Dashboard"}
-                </Button>
-              </div>
-
+        {accountKind === "" ? (
+          <Card className="border-border shadow-sm">
+            <CardHeader className="space-y-1 pb-4">
+              <CardTitle className="text-lg">Account type</CardTitle>
+              <CardDescription className="text-xs">
+                Choose applicant or officer before entering details
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <button
+                type="button"
+                className="w-full rounded-lg border border-border bg-background p-4 text-left hover:bg-muted"
+                onClick={() => setAccountKind("applicant")}
+              >
+                <span className="block text-sm font-medium text-foreground">Applicant</span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  For businesses and entrepreneurs applying for registrations, approvals, licences and other services.
+                </span>
+              </button>
+              <button
+                type="button"
+                className="w-full rounded-lg border border-border bg-background p-4 text-left hover:bg-muted"
+                onClick={() => setAccountKind("officer")}
+              >
+                <span className="block text-sm font-medium text-foreground">Officer</span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  For authorized government and department officers reviewing and processing applications.
+                </span>
+              </button>
               <div className="text-center text-xs text-muted-foreground pt-2">
                 Already registered?{" "}
                 <Link href="/login" className="text-primary font-medium hover:underline">
                   Sign In
                 </Link>
               </div>
-            </form>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-border shadow-sm">
+            <CardHeader className="space-y-1 pb-4">
+              <CardTitle className="text-lg">
+                {accountKind === "officer" ? "Officer details" : "Entity Onboarding"}
+              </CardTitle>
+              <CardDescription className="text-xs">
+                {accountKind === "officer"
+                  ? "Provide the officer name and official contact details"
+                  : "Provide enterprise and promoter contact details"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-foreground" htmlFor="signup-name">
+                    {accountKind === "officer" ? "Officer name" : "Enterprise Name"}
+                  </label>
+                  <Input
+                    id="signup-name"
+                    type="text"
+                    placeholder={accountKind === "officer" ? "Enter the officer name" : "Enter the enterprise name"}
+                    value={fullName}
+                    onChange={(event) => setFullName(event.target.value)}
+                    autoComplete={accountKind === "officer" ? "name" : "organization"}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground" htmlFor="signup-pan">
+                      PAN / GSTIN
+                    </label>
+                    <Input
+                      id="signup-pan"
+                      type="text"
+                      placeholder="AAACE1234F"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground" htmlFor="signup-udyam">
+                      Udyam Registration (Optional)
+                    </label>
+                    <Input
+                      id="signup-udyam"
+                      type="text"
+                      placeholder="UDYAM-XX-00-0000000"
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-foreground" htmlFor="signup-email">
+                    Official Email
+                  </label>
+                  <Input
+                    id="signup-email"
+                    type="email"
+                    placeholder="promoter@enterprise.com"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    autoComplete="email"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-foreground" htmlFor="signup-password">
+                    Password
+                  </label>
+                  <Input
+                    id="signup-password"
+                    type="password"
+                    placeholder="At least 8 characters"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="new-password"
+                  />
+                </div>
+
+                {error ? <p className="text-xs text-destructive">{error}</p> : null}
+                {notice ? <p className="text-xs text-muted-foreground">{notice}</p> : null}
+
+                <div className="pt-2 space-y-2">
+                  <Button className="w-full" type="submit" disabled={pending}>
+                    {pending
+                      ? "Creating account..."
+                      : accountKind === "officer"
+                        ? "Submit officer registration"
+                        : "Create Account & Open Dashboard"}
+                  </Button>
+                  <Button
+                    className="w-full"
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setAccountKind("");
+                      setError("");
+                      setNotice("");
+                    }}
+                  >
+                    Back
+                  </Button>
+                </div>
+
+                <div className="text-center text-xs text-muted-foreground pt-2">
+                  Already registered?{" "}
+                  <Link href="/login" className="text-primary font-medium hover:underline">
+                    Sign In
+                  </Link>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
